@@ -123,3 +123,12 @@
                (records))))
   ([query-options]
    (query *session* query-options)))
+
+(defn filters
+  [& fs]
+  (let [make-filter (fn [[operator column-index value]]
+                      (Filter. (Filter$FilterType/FILTER)
+                               (operator-for operator)
+                               column-index
+                               (str value)))]
+    (into-array (map make-filter fs))))

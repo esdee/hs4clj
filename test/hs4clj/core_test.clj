@@ -34,6 +34,8 @@
                             ",date_of_birth datetime not null"
                             ",date_of_death datetime);"
                             )
+                       (str "create index test_cats_ids_weights "
+                            "on test_cats(id, weight);")
                        (str "insert into test_cats("
                             "name,weight,breed_id,date_of_birth,date_of_death) "
                             "values "
@@ -132,3 +134,31 @@
              (hs4clj/with-session (session)
                (doall (map #(first (hs4clj/query {:index-values %}))
                            [1 2 3 4]))))))))
+
+(testing "Querying using filters"
+  (let [columns [:id :name :weight :breed_id :date_of_birth :date_of_death]
+        session #(hs4clj/open-session :client @client
+                                      :db :mytest
+                                      :table :test_cats
+                                      :index :test_cats_ids_weights
+                                      :columns columns
+                                      :filter-columns [:weight])
+        query-opts {:operator >
+                    :limit 100
+                    :index-values [0 0]}]
+
+    (deftest equality-filter
+      (is (= [(:tuna cats)]
+             (hs4clj/query (session)
+                           (assoc query-opts
+                                  :filters
+                                  ; cats with a weight equal to 15.3
+                                  (hs4clj/filters [= 0 15.3]))))))
+
+    (deftest less-filter
+      (is (= (map cats [:tiki :tesla])
+             (hs4clj/query (session)
+                           (assoc query-opts
+                                  :filters
+                                  (hs4clj/filters [< 0 10]))))))
+    ))
