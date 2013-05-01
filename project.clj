@@ -8,5 +8,4 @@
                  [mysql/mysql-connector-java "5.1.6"]
                  [log4j/log4j "1.2.8"]
                  [org.slf4j/slf4j-api "1.5.6"]
-                 [org.slf4j/slf4j-log4j12 "1.3.0"]
-                 [midje "1.6-SNAPSHOT"]])
+                 [org.slf4j/slf4j-log4j12 "1.3.0"]])

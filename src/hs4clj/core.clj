@@ -108,18 +108,18 @@
       (.find session index-values (get operators operator) limit offset))))
 
 (defn query
-  [& {:keys [map-fn parse-fn]
-      :as query-options}]
-  (let [session (get query-options :session *session*)
-        result-set (get-result-set session
+  ([session {:keys [map-fn parse-fn] :as query-options}]
+   (let [result-set (get-result-set session
                                    query-options)
-        columns (.getColumns session)
-        vfn (or parse-fn
-                (fn [^ResultSetImpl rset] (map #(parse rset % :string)
-                                               (range 0 (count columns)))))
-        records (fn thisfn []
-                  (when (.next result-set)
-                    (cons (zipmap (map keyword columns) (vfn result-set))
-                          (lazy-seq (thisfn)))))]
+         columns (.getColumns session)
+         vfn (or parse-fn
+                 (fn [^ResultSetImpl rset] (map #(parse rset % :string)
+                                                (range 0 (count columns)))))
+         records (fn thisfn []
+                   (when (.next result-set)
+                     (cons (zipmap (map keyword columns) (vfn result-set))
+                           (lazy-seq (thisfn)))))]
     (if map-fn (map map-fn (records))
                (records))))
+  ([query-options]
+   (query *session* query-options)))
