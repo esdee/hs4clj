@@ -127,13 +127,14 @@
    (query *session* select query-options)))
 
 (defn filters
-  ([session fs]
-  (let [filter-columns (:filter-columns session)
-        make-filter (fn [[operator column value]]
+  [& opts]
+  (let [[session fs] (if (map? (first opts))
+                               [(first opts) (flatten [(rest opts)])]
+                               [*session* (flatten opts)])
+       filter-columns (:filter-columns session)
+       make-filter (fn [[operator column value]]
                       (Filter. (Filter$FilterType/FILTER)
                                (operator-for operator)
                                (.indexOf filter-columns column)
                                (if value (str value) hs-nil)))]
-    (into-array (map make-filter fs))))
-  ([fs]
-   (filters *session* fs)))
+    (into-array (map make-filter (partition 3 fs)))))

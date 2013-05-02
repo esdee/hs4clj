@@ -151,10 +151,10 @@
                              [> :weight 10]
                              {:limit 100
                               :filters (hs4clj/filters sess
-                                                       [[<= :date_of_death nil]])})))
+                                                       [<= :date_of_death nil])})))
         ; all cats whose weight is > 10 who are dead
         (hs4clj/with-session sess
           (is (= [(:spider cats)]
                  (hs4clj/query [> :weight 10]
                                {:limit 100
-                                :filters (hs4clj/filters [[> :date_of_death nil]])}))))))))
+                                :filters (hs4clj/filters [> :date_of_death nil])}))))))))
