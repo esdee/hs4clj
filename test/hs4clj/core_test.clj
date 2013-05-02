@@ -1,7 +1,7 @@
 (ns hs4clj.core-test
   (:require [clojure.test :refer :all]
             [clojure.java.jdbc :as jdbc]
-            [hs4clj.core :as hs4clj]))
+            [hs4clj.core :as hs4clj :reload true]))
 
 ; Note : for these tests to work you will need a mysql that is set up for
 ; handler socket.
@@ -34,8 +34,8 @@
                             ",date_of_birth datetime not null"
                             ",date_of_death datetime);"
                             )
-                       (str "create index test_cats_ids_weights "
-                            "on test_cats(id, weight);")
+                       (str "create index test_cats_weights "
+                            "on test_cats(weight);")
                        (str "insert into test_cats("
                             "name,weight,breed_id,date_of_birth,date_of_death) "
                             "values "
@@ -58,11 +58,12 @@
 
 (defn- setup-teardown
   [f]
-  (do (shutdown-client)
-      (reset-database!)
-      (open-client)
-      (f)
-      (shutdown-client)))
+  (try
+    (reset-database!)
+    (open-client)
+    (f)
+    (finally
+      (shutdown-client))))
 
 (use-fixtures :each setup-teardown)
 
@@ -96,69 +97,64 @@
 
 (testing "Querying against a single primary key"
   (let [columns [:id :name :weight :breed_id :date_of_birth :date_of_death]
-        session #(hs4clj/open-session :client @client
-                                      :db :mytest
-                                      :table :test_cats
-                                      :index :PRIMARY
-                                      :columns columns)]
+        session #(hs4clj/open-session @client
+                                      {:db :mytest
+                                       :table :test_cats
+                                       :index :PRIMARY
+                                       :columns columns})]
 
     (deftest single-equality-match-with-default-arguments
       (is (= [(:spider cats)]
              (hs4clj/query (session)
-                           {:index-values [1]}))))
+                           [= :id 1]
+                           {}))))
 
     (deftest multiple-results-with-additional-arguments
       (is (= (map cats [:tuna :tiki :tesla])
              (hs4clj/query (session)
-                           {:operator >
-                            :limit 100
-                            :index-values [1]}))))
+                           [> :id 1]
+                           {:limit 100}))))
 
     (deftest results-with-limits-and-offsets
       (is (= [(:tiki cats)]
              (hs4clj/query (session)
-                           {:operator >
-                            :limit 1
-                            :offset 1
-                            :index-values [1]}))))
+                           [> :id 1]
+                           {:limit 1
+                            :offset 1}))))
 
     (deftest with-session-syntax
       (is (= (map cats [:spider :tuna :tiki :tesla])
              (hs4clj/with-session (session)
-               (hs4clj/query {:operator >
-                              :limit 100
-                              :index-values 0})))))
+               (hs4clj/query [> :id 0]
+                             {:limit 100})))))
 
     (deftest with-session-mapping
       (is (= (map cats [:spider :tuna :tiki :tesla])
              (hs4clj/with-session (session)
-               (doall (map #(first (hs4clj/query {:index-values %}))
+               (doall (map #(first (hs4clj/query [= :id %] {}))
                            [1 2 3 4]))))))))
 
 (testing "Querying using filters"
   (let [columns [:id :name :weight :breed_id :date_of_birth :date_of_death]
-        session #(hs4clj/open-session :client @client
-                                      :db :mytest
-                                      :table :test_cats
-                                      :index :test_cats_ids_weights
-                                      :columns columns
-                                      :filter-columns [:weight])
-        query-opts {:operator >
-                    :limit 100
-                    :index-values [0 0]}]
+        session #(hs4clj/open-session @client
+                                      {:db :mytest
+                                       :table :test_cats
+                                       :index :test_cats_weights
+                                       :columns columns
+                                       :filter-columns [:date_of_death]})]
 
-    (deftest equality-filter
-      (is (= [(:tuna cats)]
-             (hs4clj/query (session)
-                           (assoc query-opts
-                                  :filters
-                                  ; cats with a weight equal to 15.3
-                                  (hs4clj/filters [= 0 15.3]))))))
-
-    (deftest less-filter
-      (is (= (map cats [:tiki :tesla])
-             (hs4clj/query (session)
-                           (assoc query-opts
-                                  :filters
-                                  (hs4clj/filters [< 0 10]))))))
-    ))
+    (deftest filtering-for-nils
+      (let [sess (session)]
+        ; all cats whose weight > 10 who are still alive
+        (is (= [(:tuna cats)]
+               (hs4clj/query sess
+                             [> :weight 10]
+                             {:limit 100
+                              :filters (hs4clj/filters sess
+                                                       [[<= :date_of_death nil]])})))
+        ; all cats whose weight is > 10 who are dead
+        (hs4clj/with-session sess
+          (is (= [(:spider cats)]
+                 (hs4clj/query [> :weight 10]
+                               {:limit 100
+                                :filters (hs4clj/filters [[> :date_of_death nil]])}))))))))

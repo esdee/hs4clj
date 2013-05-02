@@ -13,20 +13,21 @@
 
 ; TODO remove duplications
 (defn open-session
-  [& {:keys [client db table index columns filter-columns]}]
+  [client {:keys [db table index columns filter-columns]}]
   (let [arr #(into-array (map name %))]
     (if filter-columns
-      (.openIndexSession client
-                         (name db)
-                         (name table)
-                         (name index)
-                         (arr columns)
-                         (arr filter-columns))
-      (.openIndexSession client
-                         (name db)
-                         (name table)
-                         (name index)
-                         (arr columns)))))
+      {:index-session (.openIndexSession client
+                                         (name db)
+                                         (name table)
+                                         (name index)
+                                         (arr columns)
+                                         (arr filter-columns))
+       :filter-columns filter-columns}
+      {:index-session (.openIndexSession client
+                                         (name db)
+                                         (name table)
+                                         (name index)
+                                         (arr columns))})))
 
 (def ^:dynamic *session*)
 
@@ -81,7 +82,7 @@
   (fn [^ResultSetImpl result-set ^long column make-type]
     make-type))
 
-(def ^:private hs-nil (str (char 0)))
+(def hs-nil (str (char 0)))
 
 (defn not-nil?
   [v]
@@ -99,19 +100,20 @@
 
 ; TODO remove duplications
 (defn- get-result-set
-  [session {:keys [filters limit offset operator]
-            :or {operator =, limit 1, offset 0}
-            :as query-options}]
-  (let [index-values (harray (flatten [(:index-values query-options)]))]
+  [session select {:keys [filters limit offset ]
+                   :or {limit 1, offset 0}
+                   :as query-options}]
+  (let [operator (first select)
+        index-values (harray (remove keyword? (rest select)))
+        isession (:index-session session)]
     (if filters
-      (.find session index-values (get operators operator) limit offset filters)
-      (.find session index-values (get operators operator) limit offset))))
+      (.find isession index-values (get operators operator) limit offset filters)
+      (.find isession index-values (get operators operator) limit offset))))
 
 (defn query
-  ([session {:keys [map-fn parse-fn] :as query-options}]
-   (let [result-set (get-result-set session
-                                   query-options)
-         columns (.getColumns session)
+  ([session select {:keys [map-fn parse-fn] :as query-options}]
+   (let [result-set (get-result-set session select query-options)
+         columns (.getColumns (:index-session session))
          vfn (or parse-fn
                  (fn [^ResultSetImpl rset] (map #(parse rset % :string)
                                                 (range 0 (count columns)))))
@@ -121,14 +123,17 @@
                            (lazy-seq (thisfn)))))]
     (if map-fn (map map-fn (records))
                (records))))
-  ([query-options]
-   (query *session* query-options)))
+  ([select query-options]
+   (query *session* select query-options)))
 
 (defn filters
-  [& fs]
-  (let [make-filter (fn [[operator column-index value]]
+  ([session fs]
+  (let [filter-columns (:filter-columns session)
+        make-filter (fn [[operator column value]]
                       (Filter. (Filter$FilterType/FILTER)
                                (operator-for operator)
-                               column-index
-                               (str value)))]
+                               (.indexOf filter-columns column)
+                               (if value (str value) hs-nil)))]
     (into-array (map make-filter fs))))
+  ([fs]
+   (filters *session* fs)))
