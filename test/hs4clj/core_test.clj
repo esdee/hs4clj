@@ -122,15 +122,15 @@
                            {:limit 1
                             :offset 1}))))
 
-    (deftest with-session-syntax
+    (deftest within-session-syntax
       (is (= (map cats [:spider :tuna :tiki :tesla])
-             (hs4clj/with-session (session)
+             (hs4clj/within-session (session)
                (hs4clj/query [> :id 0]
                              {:limit 100})))))
 
-    (deftest with-session-mapping
+    (deftest within-session-mapping
       (is (= (map cats [:spider :tuna :tiki :tesla])
-             (hs4clj/with-session (session)
+             (hs4clj/within-session (session)
                (doall (map #(first (hs4clj/query [= :id %] {}))
                            [1 2 3 4]))))))))
 
@@ -153,8 +153,44 @@
                               :filters (hs4clj/filters sess
                                                        [<= :date_of_death nil])})))
         ; all cats whose weight is > 10 who are dead
-        (hs4clj/with-session sess
+        (hs4clj/within-session sess
           (is (= [(:spider cats)]
                  (hs4clj/query [> :weight 10]
                                {:limit 100
                                 :filters (hs4clj/filters [> :date_of_death nil])}))))))))
+
+(testing "Inserting data"
+  (let [columns [:id :name :weight :breed_id :date_of_birth :date_of_death]
+        session #(hs4clj/open-session @client
+                                     {:db :mytest
+                                      :table :test_cats
+                                      :index :PRIMARY
+                                      :columns columns})]
+    (deftest multiple-inserts
+      (hs4clj/within-session (session)
+        (hs4clj/insert
+          [["" ; auto ids should be sent as empty strings
+            "Another Cat"
+            16.99
+            4
+            "2002-03-15 00:00:00"
+            "2012-03-15 00:00:00"]
+           [""
+            "Another Cat 2"
+            17.05
+            4
+            "2002-03-15 00:00:00"
+            nil]])
+        (is (= [{:id "5"
+                 :name "Another Cat"
+                 :weight "16.99"
+                 :breed_id "4"
+                 :date_of_birth "2002-03-15 00:00:00"
+                 :date_of_death "2012-03-15 00:00:00"}
+                {:id "6"
+                 :name "Another Cat 2"
+                 :weight "17.05"
+                 :breed_id "4"
+                 :date_of_birth "2002-03-15 00:00:00"
+                 :date_of_death nil}]
+               (hs4clj/query [>= :id 5] {:limit 100})))))))

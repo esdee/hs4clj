@@ -31,7 +31,9 @@
 
 (def ^:dynamic *session*)
 
-(defmacro with-session
+(defmacro within-session
+  "Bind a session before executing commands. Does not close the session on
+   completion."
   [session & body]
   `(binding [*session* ~session]
      ~@body))
@@ -110,7 +112,9 @@
       (.find isession index-values (get operators operator) limit offset filters)
       (.find isession index-values (get operators operator) limit offset))))
 
+; --- Getting data -------------------------------------------------------------
 (defn query
+  "query records from the database, using a session"
   ([session select {:keys [map-fn parse-fn] :as query-options}]
    (let [result-set (get-result-set session select query-options)
          columns (.getColumns (:index-session session))
@@ -127,14 +131,23 @@
    (query *session* select query-options)))
 
 (defn filters
+  "Create filters for use in querying records"
   [& opts]
   (let [[session fs] (if (map? (first opts))
-                               [(first opts) (flatten [(rest opts)])]
+                               [(first opts) (flatten (rest opts))]
                                [*session* (flatten opts)])
-       filter-columns (:filter-columns session)
-       make-filter (fn [[operator column value]]
-                      (Filter. (Filter$FilterType/FILTER)
-                               (operator-for operator)
-                               (.indexOf filter-columns column)
-                               (if value (str value) hs-nil)))]
+        filter-columns (:filter-columns session)
+        make-filter (fn [[operator column value]]
+                       (Filter. (Filter$FilterType/FILTER)
+                                (operator-for operator)
+                                (.indexOf filter-columns column)
+                                (if value (str value) hs-nil)))]
     (into-array (map make-filter (partition 3 fs)))))
+
+(defn insert
+  ([{isession :index-session} rows]
+   (doseq [row rows]
+     (.insert isession (harray row)))
+   rows)
+  ([rows]
+   (insert *session* rows)))
